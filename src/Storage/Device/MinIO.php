@@ -39,7 +39,7 @@ class MinIO extends Device
 
     public function __construct(string $root, string $accessKey, string $secretKey, string $protocol, string $host, string $bucket, string $region = self::EU_CENTRAL_1, string $acl = self::ACL_PRIVATE)
     {
-        parent::__construct($root, $accessKey, $secretKey, $bucket, $region, $acl);
+        parent::__construct($root, $accessKey, $secretKey, $host, $bucket, $region, $acl);
         
         $this->protocol = $protocol;
         $this->headers['host'] = $host;
