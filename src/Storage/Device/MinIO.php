@@ -3,9 +3,9 @@
 namespace Utopia\Storage\Device;
 
 use Exception;
-use Utopia\Storage\Device;
+use Utopia\Storage\Device\S3;
 
-class MinIO extends Device
+class MinIO extends S3
 {
 
     /**
