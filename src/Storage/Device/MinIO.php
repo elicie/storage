@@ -2,113 +2,57 @@
 
 namespace Utopia\Storage\Device;
 
-use Exception;
-use Utopia\Storage\Device\S3;
+use Utopia\Storage\Storage;
 
+/**
+ * Adapter for S3-Compatible storage providers
+ *
+ * Endpoint URL is explicitly defined by the caller due to providers allowing
+ * path-style or vhost-style endpoints as well as extra parameters such as
+ * client ID.
+ */
 class MinIO extends S3
 {
+    /**
+     * @var string
+     */
+    protected string $endpoint;
 
     /**
-     * AWS Regions constants
-     */
-    const US_EAST_1 = 'us-east-1';
-    const US_EAST_2 = 'us-east-2';
-    const US_WEST_1 = 'us-west-1';
-    const US_WEST_2 = 'us-west-2';
-    const AF_SOUTH_1 = 'af-south-1';
-    const AP_EAST_1 = 'ap-east-1';
-    const AP_SOUTH_1 = 'ap-south-1';
-    const AP_NORTHEAST_3 = 'ap-northeast-3';
-    const AP_NORTHEAST_2 = 'ap-northeast-2';
-    const AP_NORTHEAST_1 = 'ap-northeast-1';
-    const AP_SOUTHEAST_1 = 'ap-southeast-1';
-    const AP_SOUTHEAST_2 = 'ap-southeast-2';
-    const CA_CENTRAL_1 = 'ca-central-1';
-    const EU_CENTRAL_1 = 'eu-central-1';
-    const EU_WEST_1 = 'eu-west-1';
-    const EU_SOUTH_1 = 'eu-south-1';
-    const EU_WEST_2 = 'eu-west-2';
-    const EU_WEST_3 = 'eu-west-3';
-    const EU_NORTH_1 = 'eu-north-1';
-    const SA_EAST_1 = 'eu-north-1';
-    const CN_NORTH_1 = 'cn-north-1';
-    const ME_SOUTH_1 = 'me-south-1';
-    const CN_NORTHWEST_1 = 'cn-northwest-1';
-    const US_GOV_EAST_1 = 'us-gov-east-1';
-    const US_GOV_WEST_1 = 'us-gov-west-1';
-
-    public function __construct(string $root, string $accessKey, string $secretKey, string $protocol, string $host, string $bucket, string $region = self::EU_CENTRAL_1, string $acl = self::ACL_PRIVATE)
-    {
-        parent::__construct($root, $accessKey, $secretKey, $host, $bucket, $region, $acl);
-        
-        $this->protocol = $protocol;
-        $this->headers['host'] = $host;
-    }
-
-    /**
-     * Get list of objects in the given path.
+     * S3Compatible Constructor
      *
-     * @param string $path
-     * 
-     * @throws \Exception
-     *
-     * @return array
+     * @param  string  $endpoint
+     * @param  string  $root
+     * @param  string  $accessKey
+     * @param  string  $secretKey
+     * @param  string  $bucket
+     * @param  bool  $vhost
+     * @param  string  $region
+     * @param  string  $acl
      */
-    public function listObjects($prefix = '', $maxKeys = 1000, $continuationToken = '')
+    public function __construct(string $endpoint, string $root, string $accessKey, string $secretKey, string $bucket, bool $vhost, string $region = self::US_EAST_1, string $acl = self::ACL_PRIVATE)
     {
-        $uri = '/' . $this->getRoot();
-        $this->headers['content-type'] = 'text/plain';
-        $this->headers['content-md5'] = \base64_encode(md5('', true));
-
-        $parameters = [
-            'list-type' => 2,
-            'prefix' => $prefix,
-            'max-keys' => $maxKeys,
-        ];
-        if(!empty($continuationToken)) {
-            $parameters['continuation-token'] = $continuationToken;
+        if (! $vhost) {
+            $root = $bucket.$root;
         }
-        $response = parent::call(self::METHOD_GET, $uri, '', $parameters);
-        return $response->body;
-    }
+        parent::__construct($root, $accessKey, $secretKey, $bucket, $region, $acl);
 
-    /**
-     * Delete files in given path, path must be a directory. Return true on success and false on failure.
-     *
-     * @param string $path
-     * 
-     * @throws \Exception
-     *
-     * @return bool
-     */
-    public function deletePath(string $path): bool
-    {
-        $uri = '/' . $this->getRoot();
-        $continuationToken = '';
-        do {
-            $objects = $this->listObjects($path, continuationToken: $continuationToken);
-            $count = (int) ($objects['KeyCount'] ?? 1);
-            if($count < 1) {
-                break;
-            }
-            $continuationToken = $objects['NextContinuationToken'] ?? '';
-            $body = '<Delete xmlns="http://s3.amazonaws.com/doc/2006-03-01/">';
-            
-            if($count > 1) {
-                foreach ($objects['Contents'] as $object) {
-                    $body .= "<Object><Key>{$object['Key']}</Key></Object>";
-                }
-            } else {
-                $body .= "<Object><Key>{$objects['Contents']['Key']}</Key></Object>"; 
-            }
-            $body .= '<Quiet>true</Quiet>';
-            $body .= '</Delete>';
-            $this->amzHeaders['x-amz-content-sha256'] = \hash('sha256', $body);
-            $this->headers['content-md5'] = \base64_encode(md5($body, true));
-            parent::call(self::METHOD_POST, $uri, $body, ['delete'=>'']);
-        } while(!empty($continuationToken));
+        $this->endpoint = $endpoint;
+        $this->vhost = $vhost || false;
 
-        return true;
+        /**
+         * Workaround to prevent having to do a refactor of
+         * the S3 class along with adapter addition. Class only
+         * supports https for the time being.
+         *
+         * There are multiple endpoint styles dependent upon the provider
+         * used. Examples are:
+         * <scheme>://<endpoint.url>/<bucket>
+         * <scheme>://<clientid.endpoint.url>/<bucket>
+         * <scheme>://<bucketvhost.endpoint.url>
+         */
+        $endpoint = \preg_replace('/^https?:\/\//i', '', $endpoint);
+        $this->headers['host'] = $endpoint;
     }
 
     /**
@@ -116,7 +60,15 @@ class MinIO extends S3
      */
     public function getName(): string
     {
-        return 'MinIO Object Storage';
+        return 'S3-Compatible Storage';
+    }
+
+    /**
+     * @return string
+     */
+    public function getType(): string
+    {
+        return Storage::DEVICE_MINIO;
     }
 
     /**
@@ -124,6 +76,6 @@ class MinIO extends S3
      */
     public function getDescription(): string
     {
-        return 'MinIO Object Storage';
+        return 'Generic Connector For S3-Compatible Storage Providers';
     }
 }
