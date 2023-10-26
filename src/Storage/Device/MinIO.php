@@ -17,6 +17,7 @@ class MinIO extends S3
      * @var string
      */
     protected string $endpoint;
+    protected string $vhost;
 
     /**
      * S3Compatible Constructor
